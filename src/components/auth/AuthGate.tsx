@@ -40,21 +40,25 @@ export default function AuthGate() {
       return;
     }
 
-    try {
-      const headers = {
-        ...authHeaders(),
-      };
+try {
+  const headers: HeadersInit = {};
 
-      devLog(`[AUTH GATE][${requestId}] Appel /api/profile`, {
-        hasAuthorization: Boolean(headers.Authorization),
-        authorizationPreview: previewValue(headers.Authorization, 10, 8),
-      });
+  const authorization = authHeaders().Authorization;
 
-      const response = await fetch('/api/profile', {
-        method: 'GET',
-        headers,
-        cache: 'no-store',
-      });
+  if (authorization) {
+    headers.Authorization = authorization;
+  }
+
+  devLog(`[AUTH GATE][${requestId}] Appel /api/profile`, {
+    hasAuthorization: Boolean(authorization),
+    authorizationPreview: previewValue(authorization, 10, 8),
+  });
+
+  const response = await fetch('/api/profile', {
+    method: 'GET',
+    headers,
+    cache: 'no-store',
+  });
 
       const data = await response.json();
 
@@ -329,20 +333,24 @@ export default function AuthGate() {
 
     devLog(`[AUTH GATE][${requestId}] handleOnboardingComplete`);
 
-    try {
-      const headers = {
-        ...authHeaders(),
-      };
+try {
+  const headers: HeadersInit = {};
 
-      devLog(`[AUTH GATE][${requestId}] Appel POST /api/profile/mark-first-login`, {
-        hasAuthorization: Boolean(headers.Authorization),
-      });
+  const authorization = authHeaders().Authorization;
 
-      const response = await fetch('/api/profile/mark-first-login', {
-        method: 'POST',
-        headers,
-        cache: 'no-store',
-      });
+  if (authorization) {
+    headers.Authorization = authorization;
+  }
+
+  devLog(`[AUTH GATE][${requestId}] Appel POST /api/profile/mark-first-login`, {
+    hasAuthorization: Boolean(authorization),
+  });
+
+  const response = await fetch('/api/profile/mark-first-login', {
+    method: 'POST',
+    headers,
+    cache: 'no-store',
+  });
 
       const data = await response.json().catch(() => null);
 

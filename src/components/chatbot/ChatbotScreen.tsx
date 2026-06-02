@@ -113,6 +113,18 @@ export default function ChatbotScreen({
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
+  function buildAuthHeaders(extraHeaders?: Record<string, string>): HeadersInit {
+    const headers = new Headers(extraHeaders);
+
+    const authorization = authHeaders().Authorization;
+
+    if (authorization) {
+      headers.set('Authorization', authorization);
+    }
+
+    return headers;
+  }
+
   useEffect(() => {
   async function loadConversationMessages() {
     if (!conversationId) {
@@ -128,9 +140,7 @@ export default function ChatbotScreen({
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         {
           method: 'GET',
-          headers: {
-            ...authHeaders(),
-          },
+          headers: buildAuthHeaders(),
           cache: 'no-store',
         },
       );
@@ -312,9 +322,7 @@ export default function ChatbotScreen({
 
       const response = await fetch('/api/transcribe', {
         method: 'POST',
-        headers: {
-          ...authHeaders(),
-        },
+        headers: buildAuthHeaders(),
         body: formData,
       });
 
