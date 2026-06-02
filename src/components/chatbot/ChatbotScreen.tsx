@@ -204,10 +204,9 @@ export default function ChatbotScreen({
     try {
       const response = await fetch('/api/search-jobs', {
         method: 'POST',
-        headers: {
+        headers: buildAuthHeaders({
           'Content-Type': 'application/json',
-          ...authHeaders(),
-        },
+        }),
         body: JSON.stringify({ query: cleanContent }),
       });
 
@@ -439,10 +438,9 @@ async function validateAllEstimates() {
 
     const response = await fetch('/api/devis/from-jobs', {
       method: 'POST',
-      headers: {
+      headers: buildAuthHeaders({
         'Content-Type': 'application/json',
-        ...authHeaders(),
-      },
+      }),
       body: JSON.stringify(payload),
     });
 
@@ -486,10 +484,9 @@ async function validateAllEstimates() {
      */
     const pdfResponse = await fetch(pdfProxyUrl, {
       method: 'GET',
-      headers: {
+      headers: buildAuthHeaders({
         Accept: 'application/pdf',
-        ...authHeaders(),
-      },
+      }),
       cache: 'no-store',
     });
 

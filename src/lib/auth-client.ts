@@ -89,7 +89,7 @@ export function getStoredProfile(): UserProfile | null {
   }
 }
 
-export function authHeaders() {
+export function authHeaders(): Record<string, string> {
   if (process.env.NEXT_PUBLIC_SKIP_AUTH === 'true') {
     devWarn('[AUTH CLIENT] NEXT_PUBLIC_SKIP_AUTH=true donc pas de header Authorization');
     return {};
