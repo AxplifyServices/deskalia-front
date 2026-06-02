@@ -1,0 +1,46 @@
+name: Deploy Deskalia Front
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy front on VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy through SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+
+            echo "===== Go to project ====="
+            cd ~/deskalia-front
+
+            echo "===== Pull latest code ====="
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "===== Check env file ====="
+            test -f .env.production
+
+            echo "===== Build and restart Docker container ====="
+            docker compose --env-file .env.production down
+            docker compose --env-file .env.production up -d --build
+
+            echo "===== Docker status ====="
+            docker ps --filter "name=deskalia-front"
+
+            echo "===== Health check ====="
+            sleep 5
+            curl -I http://localhost:3001/fr || true
+
+            echo "===== Last logs ====="
+            docker logs --tail=80 deskalia-front || true

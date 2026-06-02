@@ -1,0 +1,20 @@
+services:
+  deskalia-front:
+    container_name: deskalia-front
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+        DESKALIA_API_BASE_URL: ${DESKALIA_API_BASE_URL}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+        NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${NEXT_PUBLIC_GOOGLE_REDIRECT_URI}
+        NEXT_PUBLIC_SKIP_AUTH: ${NEXT_PUBLIC_SKIP_AUTH}
+        DESKALIA_GUEST_API_KEY: ${DESKALIA_GUEST_API_KEY}
+        NEXT_PUBLIC_ENABLE_DEBUG_LOGS: ${NEXT_PUBLIC_ENABLE_DEBUG_LOGS}
+        ENABLE_SERVER_DEBUG_LOGS: ${ENABLE_SERVER_DEBUG_LOGS}
+    env_file:
+      - .env.production
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
