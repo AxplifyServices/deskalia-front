@@ -46,12 +46,14 @@ export default function CompanySearchStep({ onContinue }: CompanySearchStepProps
     setConfirmedView(false);
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      };
+
       const response = await fetch('/api/company-search', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders(),
-        },
+        headers,
         body: JSON.stringify({
           search_type: 'name',
           q: companyName.trim(),
@@ -108,7 +110,7 @@ async function confirmCompany() {
   setError('');
 
   try {
-    const headers = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...authHeaders(),
     };
