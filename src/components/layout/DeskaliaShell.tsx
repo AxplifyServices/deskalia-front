@@ -39,6 +39,11 @@ export default function DeskaliaShell({ profile, onLogout }: DeskaliaShellProps)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
+  function handleConversationSaved(conversationId: string) {
+    setActiveConversationId(conversationId);
+    void loadConversations();
+  }
+
   async function loadConversations() {
     try {
       const response = await fetch('/api/conversations', {
@@ -180,6 +185,7 @@ export default function DeskaliaShell({ profile, onLogout }: DeskaliaShellProps)
                 onLogout={onLogout}
                 onOpenSidebar={() => setSidebarOpen(true)}
                 conversationId={activeConversationId}
+                onConversationSaved={handleConversationSaved}
               />
             </div>
           ) : null}

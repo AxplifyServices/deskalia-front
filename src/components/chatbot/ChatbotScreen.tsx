@@ -31,6 +31,12 @@ type ApiJob = {
 type SearchJobsResponse = {
   success?: boolean;
   jobs?: Record<string, ApiJob>;
+  conversation_id?: string;
+  conversation_persistence?: {
+    success: boolean;
+    status: number;
+    error?: string;
+  } | null;
   error?: string;
 };
 
@@ -80,12 +86,14 @@ type ChatbotScreenProps = {
   onLogout?: () => void;
   onOpenSidebar?: () => void;
   conversationId?: string | null;
+  onConversationSaved?: (conversationId: string) => void;
 };
 
 export default function ChatbotScreen({
   onLogout,
   onOpenSidebar,
   conversationId,
+  onConversationSaved,
 }: ChatbotScreenProps) {
   const t = useTranslations('Chatbot');
 
@@ -113,6 +121,9 @@ export default function ChatbotScreen({
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const localConversationIdRef = useRef<string>(conversationId ?? crypto.randomUUID());
+  const hasStartedLocalConversationRef = useRef(false);
+
   function buildAuthHeaders(extraHeaders?: Record<string, string>): HeadersInit {
     const headers = new Headers(extraHeaders);
 
@@ -125,13 +136,23 @@ export default function ChatbotScreen({
     return headers;
   }
 
-  useEffect(() => {
+useEffect(() => {
   async function loadConversationMessages() {
+    if (conversationId) {
+      localConversationIdRef.current = conversationId;
+    }
+
     if (!conversationId) {
+      localConversationIdRef.current = crypto.randomUUID();
+      hasStartedLocalConversationRef.current = false;
       setMessages([]);
       setJobs([]);
       setGeneratedPdfUrl(null);
       setCustomEstimatedDays(null);
+      return;
+    }
+
+    if (hasStartedLocalConversationRef.current) {
       return;
     }
 
@@ -186,65 +207,107 @@ export default function ChatbotScreen({
 
   const selectedEstimatedDays = customEstimatedDays ?? totals.estimatedDays;
 
-  async function sendTextToSearchJobs(content: string) {
-    const cleanContent = content.trim();
-    if (!cleanContent || isThinking) return;
+async function sendTextToSearchJobs(content: string) {
+  const cleanContent = content.trim();
+  if (!cleanContent || isThinking) return;
+
+  const activeConversationId = localConversationIdRef.current;
+
+  const currentChatHistory = messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+
+  hasStartedLocalConversationRef.current = true;
+
+  setMessages((current) => [
+    ...current,
+    { id: crypto.randomUUID(), role: 'user', content: cleanContent },
+  ]);
+
+  setInput('');
+  setJobs([]);
+  setGeneratedPdfUrl(null);
+  setCustomEstimatedDays(null);
+  setIsThinking(true);
+
+  try {
+    const response = await fetch('/api/search-jobs', {
+      method: 'POST',
+      headers: buildAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        query: cleanContent,
+        conversation_id: activeConversationId,
+        chat_history: currentChatHistory,
+        persist_conversation: true,
+      }),
+    });
+
+    const data = (await response.json()) as SearchJobsResponse;
+
+    const savedConversationId = data.conversation_id || activeConversationId;
+
+    if (savedConversationId) {
+      localConversationIdRef.current = savedConversationId;
+    }
+
+    if (!response.ok || data.success === false) {
+      const errorMessage = data.error || t('searchError');
+
+      if (
+        response.status === 401 ||
+        errorMessage.toLowerCase().includes('token has expired') ||
+        errorMessage.toLowerCase().includes('expired')
+      ) {
+        onLogout?.();
+        throw new Error('Votre session a expiré. Merci de vous reconnecter.');
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const normalizedJobs = normalizeJobs(data.jobs || {});
+    setJobs(normalizedJobs);
 
     setMessages((current) => [
       ...current,
-      { id: crypto.randomUUID(), role: 'user', content: cleanContent },
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content:
+          normalizedJobs.length > 0
+            ? t('jobsFound', { count: normalizedJobs.length })
+            : t('noJobsFound'),
+      },
     ]);
 
-    setInput('');
-    setJobs([]);
-    setGeneratedPdfUrl(null);
-    setCustomEstimatedDays(null);
-    setIsThinking(true);
-
-    try {
-      const response = await fetch('/api/search-jobs', {
-        method: 'POST',
-        headers: buildAuthHeaders({
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({ query: cleanContent }),
-      });
-
-      const data = (await response.json()) as SearchJobsResponse;
-
-      if (!response.ok || data.success === false) {
-        throw new Error(data.error || t('searchError'));
-      }
-
-      const normalizedJobs = normalizeJobs(data.jobs || {});
-      setJobs(normalizedJobs);
-
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content:
-            normalizedJobs.length > 0
-              ? t('jobsFound', { count: normalizedJobs.length })
-              : t('noJobsFound'),
-        },
-      ]);
-    } catch (error) {
-      console.error('[CHATBOT] Erreur recherche jobs', error);
-
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: error instanceof Error ? error.message : t('searchError'),
-        },
-      ]);
-    } finally {
-      setIsThinking(false);
+    if (data.conversation_persistence?.success === true && savedConversationId) {
+      onConversationSaved?.(savedConversationId);
     }
+
+    if (data.conversation_persistence?.success === false) {
+      console.warn(
+        '[CHATBOT] La recherche jobs a réussi mais la conversation n’a pas été sauvegardée',
+        data.conversation_persistence,
+      );
+    }
+  } catch (error) {
+    console.error('[CHATBOT] Erreur recherche jobs', error);
+
+    setMessages((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: error instanceof Error ? error.message : t('searchError'),
+      },
+    ]);
+  } finally {
+    setIsThinking(false);
   }
+}
 
   async function startRecording() {
     if (isRecording) return;
