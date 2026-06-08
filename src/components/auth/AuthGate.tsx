@@ -7,6 +7,7 @@ import {
   authHeaders,
   clearAuthSession,
   getAccessToken,
+  getStoredProfile,
   setAuthSession,
   type UserProfile,
 } from '@/lib/auth-client';
@@ -71,13 +72,37 @@ try {
         error: data?.error,
       });
 
-      if (!response.ok || !data.success) {
-        devWarn(`[AUTH GATE][${requestId}] Profil inaccessible -> clear session`);
-        clearAuthSession();
-        setProfile(null);
-        setStatus('anonymous');
-        return;
-      }
+if (!response.ok || !data.success) {
+  devWarn(`[AUTH GATE][${requestId}] Profil inaccessible`, {
+    status: response.status,
+    error: data?.error,
+  });
+
+  // On supprime la session uniquement si le token est vraiment refusé.
+  // Un 500, 502, 503 ou fetch failed ne doit jamais déconnecter l’utilisateur.
+  if (response.status === 401 || response.status === 422) {
+    devWarn(`[AUTH GATE][${requestId}] Token refusé -> clear session`);
+    clearAuthSession();
+    setProfile(null);
+    setStatus('anonymous');
+    return;
+  }
+
+  const storedProfile = getStoredProfile();
+
+  if (storedProfile) {
+    devWarn(
+      `[AUTH GATE][${requestId}] Erreur temporaire profil -> session locale conservée`,
+    );
+
+    setProfile(storedProfile);
+    setStatus(storedProfile.first_login_done ? 'authenticated' : 'onboarding');
+    return;
+  }
+
+  setStatus('anonymous');
+  return;
+}
 
       const loadedProfile = data.profile as UserProfile;
 
@@ -91,12 +116,24 @@ try {
         devLog(`[AUTH GATE][${requestId}] first_login_done=false -> onboarding`);
         setStatus('onboarding');
       }
-    } catch (error) {
-      devError(`[AUTH GATE][${requestId}] Exception loadProfile =`, error);
-      clearAuthSession();
-      setProfile(null);
-      setStatus('anonymous');
-    }
+} catch (error) {
+  devError(`[AUTH GATE][${requestId}] Exception loadProfile =`, error);
+
+  const storedProfile = getStoredProfile();
+
+  if (storedProfile) {
+    devWarn(
+      `[AUTH GATE][${requestId}] Erreur réseau profil -> session locale conservée`,
+    );
+
+    setProfile(storedProfile);
+    setStatus(storedProfile.first_login_done ? 'authenticated' : 'onboarding');
+    return;
+  }
+
+  setProfile(null);
+  setStatus('anonymous');
+}
   }
 
   function readTokenFromCallbackUrl() {

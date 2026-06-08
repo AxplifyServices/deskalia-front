@@ -135,11 +135,22 @@ export async function POST(request: Request) {
         ? body.conversation_id.trim()
         : crypto.randomUUID();
 
-    const chatHistory = normalizeChatHistory(body.chat_history);
-    const shouldPersistConversation =
-      !useGuestMode && Boolean(authorization) && body.persist_conversation !== false;
+const chatHistory = normalizeChatHistory(body.chat_history);
 
-    logServer(requestId, '[search-jobs] Payload front', body);
+// Par défaut, on ne persiste pas ici.
+// Sinon cette route appelle /chat après /api/search-jobs,
+// ce qui relance l'agent IA et ralentit fortement la recherche.
+const shouldPersistConversation =
+  !useGuestMode && Boolean(authorization) && body.persist_conversation === true;
+
+    logServer(requestId, '[search-jobs] Payload front résumé', {
+      hasQuery: Boolean(query),
+      queryLength: query.length,
+      conversationId,
+      hasChatHistory: Array.isArray(body.chat_history),
+      chatHistoryLength: Array.isArray(body.chat_history) ? body.chat_history.length : 0,
+      persistConversation: body.persist_conversation,
+    });
     logServer(requestId, '[search-jobs] Query nettoyée', query);
     logServer(requestId, '[search-jobs] Conversation ID', conversationId);
     logServer(requestId, '[search-jobs] Persistance conversation demandée', shouldPersistConversation);
@@ -195,7 +206,15 @@ export async function POST(request: Request) {
     const data = await readBackendJson(response);
 
     logServer(requestId, '[search-jobs] Status backend', response.status);
-    logServer(requestId, '[search-jobs] Réponse backend parsée', data);
+    const backendJobCount =
+      data && typeof data === 'object'
+        ? Object.keys(data).filter((key) => key.startsWith('Job_')).length
+        : 0;
+
+    logServer(requestId, '[search-jobs] Réponse backend résumé', {
+      status: response.status,
+      jobCount: backendJobCount,
+    });
 
     if (!response.ok) {
       const errorMessage =

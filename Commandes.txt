@@ -13,3 +13,11 @@ MDP :   &Desk06.03//Naim
 ** Lancer en local : 
 
 npm run dev
+
+** Pour Git :
+
+git status
+
+git add .
+git commit -m "message clair"
+git push origin main

@@ -63,10 +63,11 @@ export default function ClientsPage() {
   const [selectedCompany, setSelectedCompany] = useState<CompanyResult | null>(null);
   const [companyLoading, setCompanyLoading] = useState(false);
 
-  const clientCountLabel = useMemo(() => {
-    if (clients.length <= 1) return t('oneClient');
-    return t('manyClients', { count: clients.length });
-  }, [clients.length, t]);
+const clientCountLabel = useMemo(() => {
+  if (clients.length === 0) return t('noClient');
+  if (clients.length === 1) return t('oneClient');
+  return t('manyClients', { count: clients.length });
+}, [clients.length, t]);
 
   async function loadClients() {
     setLoading(true);
@@ -215,12 +216,13 @@ export default function ClientsPage() {
           ...authHeaders(),
         },
         cache: 'no-store',
-        body: JSON.stringify({
-        nom_client: nom.trim(),
-        prenom_client: clientType === 'entreprise' ? '' : prenom.trim(),
-        mail_client: email.trim(),
-        numero_tel: telephone.trim(),
-        }),
+body: JSON.stringify({
+  nom_client: nom.trim(),
+  prenom_client: clientType === 'entreprise' ? '' : prenom.trim(),
+  mail_client: email.trim(),
+  numero_tel: telephone.trim(),
+  adresse: adresse.trim(),
+}),
       });
 
       const data = await response.json();

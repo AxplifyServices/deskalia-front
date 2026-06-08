@@ -40,34 +40,56 @@ export default function DevisPage() {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
 
-  async function loadDevis() {
-    setLoading(true);
-    setError('');
+async function loadDevis() {
+  setLoading(true);
+  setError('');
 
-    try {
-      const response = await fetch('/api/devis', {
-        method: 'GET',
-        headers: {
-          ...authHeaders(),
-        },
-        cache: 'no-store',
-      });
+  const headers = authHeaders();
 
-      const data = (await response.json()) as DevisApiResponse;
-
-      if (!response.ok || data.success === false) {
-        throw new Error(data.error || t('loadError'));
-      }
-
-      setDevis(Array.isArray(data.devis) ? data.devis : []);
-      setPage(1);
-    } catch (loadError) {
-      console.error('[DEVIS] Erreur chargement', loadError);
-      setError(loadError instanceof Error ? loadError.message : t('loadError'));
-    } finally {
-      setLoading(false);
-    }
+  if (!headers.Authorization) {
+    setLoading(false);
+    setDevis([]);
+    setError(t('authRequired'));
+    return;
   }
+
+  try {
+    const response = await fetch('/api/devis', {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? ((await response.json()) as DevisApiResponse)
+      : ({
+          success: false,
+          error: await response.text(),
+        } as DevisApiResponse);
+
+    if (!response.ok || data.success === false) {
+      throw new Error(data.error || t('loadError'));
+    }
+
+    setDevis(Array.isArray(data.devis) ? data.devis : []);
+    setPage(1);
+  } catch (loadError) {
+    console.error('[DEVIS] Erreur chargement', loadError);
+
+    const message =
+      loadError instanceof TypeError && loadError.message === 'fetch failed'
+        ? t('networkError')
+        : loadError instanceof Error
+          ? loadError.message
+          : t('loadError');
+
+    setError(message);
+    setDevis([]);
+  } finally {
+    setLoading(false);
+  }
+}
 
   useEffect(() => {
     void loadDevis();
@@ -121,33 +143,28 @@ export default function DevisPage() {
     }
   }, [page, totalPages]);
 
-  return (
-    <PageFrame
-      title={t('title')}
-      action={
-        <button
-          type="button"
-          onClick={loadDevis}
-          disabled={loading}
-          className="h-11 rounded-full bg-[#ff642d] px-5 text-[13px] font-extrabold text-white shadow-sm active:scale-95 disabled:opacity-60"
-        >
-          {t('refresh')}
-        </button>
-      }
-    >
-      <div className="space-y-4">
-        <div className="rounded-[22px] bg-white p-3 shadow-sm">
-          <label className="flex h-12 items-center gap-3 rounded-[16px] bg-[#f3eee9] px-4">
-            <span className="text-[22px] text-[#704f49]">⌕</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('searchPlaceholder')}
-              className="h-full min-w-0 flex-1 bg-transparent text-[15px] font-bold text-[#2b1d1b] outline-none placeholder:text-[#9c8179]"
-            />
-          </label>
-        </div>
+return (
+  <PageFrame title={t('title')}>
 
+      <div className="space-y-4">
+
+<div className="rounded-[22px] bg-white p-3 shadow-sm">
+  <label className="flex h-12 items-center gap-3 rounded-[16px] bg-[#f3eee9] px-4">
+    <span className="text-[22px] text-[#704f49]" aria-hidden="true">
+      ⌕
+    </span>
+    <input
+      value={query}
+      onChange={(event) => setQuery(event.target.value)}
+      placeholder={t('searchPlaceholder')}
+      className="h-full min-w-0 flex-1 bg-transparent text-[15px] font-bold text-[#2b1d1b] outline-none placeholder:text-[#9c8179]"
+    />
+  </label>
+
+  <p className="mt-2 px-2 text-[12px] font-bold leading-5 text-[#704f49]">
+    {t('searchHelp')}
+  </p>
+</div>
         {loading ? (
           <p className="py-8 text-center text-[14px] font-bold text-[#704f49]">
             {t('loading')}
@@ -284,6 +301,88 @@ function DevisDetailModal({
   const pdfUrl = buildPdfUrl(devis);
   const clientName = formatClientName(devis);
 
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(Boolean(pdfUrl));
+  const [pdfError, setPdfError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    async function loadPdf() {
+      if (!pdfUrl) {
+        setPdfBlobUrl(null);
+        setPdfLoading(false);
+        setPdfError('');
+        return;
+      }
+
+      setPdfLoading(true);
+      setPdfError('');
+      setPdfBlobUrl(null);
+
+      try {
+const controller = new AbortController();
+const timeout = window.setTimeout(() => controller.abort(), 15000);
+
+const response = await fetch(pdfUrl, {
+  method: 'GET',
+  headers: {
+    ...authHeaders(),
+  },
+  cache: 'no-store',
+  signal: controller.signal,
+});
+
+window.clearTimeout(timeout);
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.error || t('pdfLoadError'));
+        }
+
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+
+        if (!cancelled) {
+          setPdfBlobUrl(objectUrl);
+        }
+      } catch (error) {
+        console.error('[DEVIS PDF] Impossible de charger le PDF', error);
+
+        let message = t('pdfLoadError');
+
+        if (error instanceof DOMException && error.name === 'AbortError') {
+  message = 'Le chargement du PDF a pris trop de temps. Vérifie la route /api/devis/pdf.';
+} else if (error instanceof TypeError && error.message === 'fetch failed') {
+          message =
+            'La requête PDF a échoué avant de recevoir une réponse. Vérifie les logs de /api/devis/pdf côté terminal Next.';
+        } else if (error instanceof Error) {
+          message = error.message;
+        }
+
+        if (!cancelled) {
+          setPdfBlobUrl(null);
+          setPdfError(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setPdfLoading(false);
+        }
+      }
+    }
+
+    void loadPdf();
+
+    return () => {
+      cancelled = true;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [pdfUrl, t]);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 p-3 backdrop-blur-sm">
       <div className="mx-auto flex h-full max-w-[980px] flex-col overflow-hidden rounded-[24px] bg-[#f8f3ee] shadow-2xl">
@@ -310,19 +409,30 @@ function DevisDetailModal({
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[340px_1fr]">
           <aside className="min-h-0 overflow-y-auto border-b border-[#ead8ce] bg-white p-4 lg:border-b-0 lg:border-r">
             <div className="space-y-3">
-              <DetailLine label={t('status')} value={formatStatus(devis.statut_devis, t)} />
-              <DetailLine label={t('client')} value={clientName} />
-              <DetailLine
-                label={t('clientId')}
-                value={devis.client_id ? String(devis.client_id) : t('notProvided')}
+              <div className="grid grid-cols-2 gap-3">
+                <DetailLine label={t('status')} value={formatStatus(devis.statut_devis, t)} />
+                <DetailLine
+                  label={t('creationDate')}
+                  value={
+                    devis.date_creation
+                      ? formatDate(devis.date_creation)
+                      : t('notProvided')
+                  }
+                />
+              </div>
+
+              <DetailPair
+                leftLabel={t('clientId')}
+                leftValue={devis.client_id ? String(devis.client_id) : t('notProvided')}
+                rightLabel={t('client')}
+                rightValue={clientName}
               />
-              <DetailLine
-                label={t('creationDate')}
-                value={devis.date_creation ? formatDate(devis.date_creation) : t('notProvided')}
-              />
+
               <DetailLine
                 label={t('validityDate')}
-                value={devis.date_validite ? formatDate(devis.date_validite) : t('notProvided')}
+                value={
+                  devis.date_validite ? formatDate(devis.date_validite) : t('notProvided')
+                }
               />
             </div>
 
@@ -337,30 +447,46 @@ function DevisDetailModal({
                 {t('pdfStatus')}
               </p>
               <p className="mt-2 text-[13px] font-bold text-[#2b1d1b]">
-                {pdfUrl ? t('pdfAvailable') : t('pdfUnavailable')}
+                {pdfUrl
+                  ? pdfLoading
+                    ? t('pdfLoading')
+                    : pdfError
+                      ? t('pdfUnavailable')
+                      : t('pdfAvailable')
+                  : t('pdfUnavailable')}
               </p>
             </div>
           </aside>
 
           <main className="min-h-0 bg-[#f8f3ee] p-3">
-            {pdfUrl ? (
+            {pdfLoading ? (
+              <div className="flex h-full min-h-[520px] items-center justify-center rounded-[18px] border border-[#ead8ce] bg-white p-8 text-center">
+                <p className="text-[14px] font-extrabold text-[#704f49]">
+                  {t('pdfLoading')}
+                </p>
+              </div>
+            ) : null}
+
+            {!pdfLoading && pdfBlobUrl ? (
               <iframe
                 title={devis.numero_devis || t('quoteWithoutNumber')}
-                src={pdfUrl}
+                src={pdfBlobUrl}
                 className="h-full min-h-[520px] w-full rounded-[18px] border border-[#ead8ce] bg-white"
               />
-            ) : (
+            ) : null}
+
+            {!pdfLoading && !pdfBlobUrl ? (
               <div className="flex h-full min-h-[520px] items-center justify-center rounded-[18px] border border-dashed border-[#d7c4b8] bg-white p-8 text-center">
                 <div>
                   <p className="text-[18px] font-black text-[#2b1d1b]">
                     {t('pdfUnavailableTitle')}
                   </p>
                   <p className="mt-2 text-[13px] font-bold text-[#704f49]">
-                    {t('pdfUnavailableDescription')}
+                    {pdfError || t('pdfUnavailableDescription')}
                   </p>
                 </div>
               </div>
-            )}
+            ) : null}
           </main>
         </div>
       </div>
@@ -426,6 +552,40 @@ function DetailLine({ label, value }: { label: string; value: string }) {
       <p className="mt-1 break-words text-[14px] font-extrabold text-[#2b1d1b]">
         {value}
       </p>
+    </div>
+  );
+}
+
+function DetailPair({
+  leftLabel,
+  leftValue,
+  rightLabel,
+  rightValue,
+}: {
+  leftLabel: string;
+  leftValue: string;
+  rightLabel: string;
+  rightValue: string;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3 rounded-[16px] bg-[#fbf8f6] p-3">
+      <div className="min-w-0">
+        <p className="text-[11px] font-black uppercase tracking-wide text-[#704f49]">
+          {leftLabel}
+        </p>
+        <p className="mt-1 break-words text-[14px] font-extrabold text-[#2b1d1b]">
+          {leftValue}
+        </p>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[11px] font-black uppercase tracking-wide text-[#704f49]">
+          {rightLabel}
+        </p>
+        <p className="mt-1 break-words text-[14px] font-extrabold text-[#2b1d1b]">
+          {rightValue}
+        </p>
+      </div>
     </div>
   );
 }

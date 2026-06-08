@@ -53,6 +53,13 @@ type GenerateDevisResponse = {
   error?: string;
 };
 
+type ClientOption = {
+  id?: number;
+  nom_client?: string | null;
+  prenom_client?: string | null;
+  mail_client?: string | null;
+};
+
 type JobDraft = {
   description: string;
   quantity: number;
@@ -111,8 +118,11 @@ export default function ChatbotScreen({
 
   const [validityDays, setValidityDays] = useState(30);
   const [customEstimatedDays, setCustomEstimatedDays] = useState<number | null>(null);
-  const [startDate, setStartDate] = useState('');
-  const [clientId, setClientId] = useState('');
+const [startDate, setStartDate] = useState('');
+const [clientId, setClientId] = useState('');
+
+const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
+const [clientsLoading, setClientsLoading] = useState(false);
 
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
   const [isGeneratingDevis, setIsGeneratingDevis] = useState(false);
@@ -120,6 +130,7 @@ export default function ChatbotScreen({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const clientsLoadedRef = useRef(false);
 
   const localConversationIdRef = useRef<string>(conversationId ?? crypto.randomUUID());
   const hasStartedLocalConversationRef = useRef(false);
@@ -135,6 +146,76 @@ export default function ChatbotScreen({
 
     return headers;
   }
+
+useEffect(() => {
+  if (jobs.length === 0 || clientsLoadedRef.current) {
+    return;
+  }
+
+  let cancelled = false;
+  const controller = new AbortController();
+
+  async function loadClientOptions() {
+    const headers = authHeaders();
+
+    if (!headers.Authorization) {
+      console.warn('[CHATBOT][CLIENTS] Chargement annulé : token absent.');
+      return;
+    }
+
+    setClientsLoading(true);
+
+    try {
+      const response = await fetch('/api/clients', {
+        method: 'GET',
+        headers,
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+      const data = contentType.includes('application/json')
+        ? await response.json()
+        : { error: await response.text() };
+
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || t('clientsLoadError'));
+      }
+
+      const normalizedClients = Array.isArray(data)
+        ? data
+        : Array.isArray(data.clients)
+          ? data.clients
+          : [];
+
+      if (!cancelled) {
+        setClientOptions(normalizedClients);
+        clientsLoadedRef.current = true;
+      }
+} catch (error) {
+  if (controller.signal.aborted) {
+    return;
+  }
+
+  console.error('[CHATBOT][CLIENTS] Impossible de charger les clients', error);
+
+  if (!cancelled) {
+    setClientOptions([]);
+  }
+} finally {
+      if (!cancelled) {
+        setClientsLoading(false);
+      }
+    }
+  }
+
+  void loadClientOptions();
+
+  return () => {
+    cancelled = true;
+    controller.abort();
+  };
+}, [jobs.length, t]);
 
 useEffect(() => {
   async function loadConversationMessages() {
@@ -237,12 +318,15 @@ async function sendTextToSearchJobs(content: string) {
       headers: buildAuthHeaders({
         'Content-Type': 'application/json',
       }),
-      body: JSON.stringify({
-        query: cleanContent,
-        conversation_id: activeConversationId,
-        chat_history: currentChatHistory,
-        persist_conversation: true,
-      }),
+body: JSON.stringify({
+  query: cleanContent,
+  conversation_id: activeConversationId,
+
+  // Important :
+  // false pour éviter que /api/search-jobs appelle aussi /chat,
+  // car /chat relance l'agent IA et ralentit fortement la recherche.
+  persist_conversation: false,
+}),
     });
 
     const data = (await response.json()) as SearchJobsResponse;
@@ -641,7 +725,7 @@ async function validateAllEstimates() {
       Mode_paiement: paymentMode,
       Validite: validityDays,
       Durée_estimee: finalEstimatedDays || undefined,
-      date_debut: startDate,
+      date_debut: formatDateForDevisPayload(startDate),
       client_id: clientId ? Number(clientId) : undefined,
     };
   }
@@ -723,29 +807,31 @@ async function validateAllEstimates() {
                       />
                     ))}
 
-                    <QuoteOptionsCard
-                      depositPercent={depositPercent}
-                      midProjectPercent={midProjectPercent}
-                      paymentMode={paymentMode}
-                      validityDays={validityDays}
-                      estimatedDays={selectedEstimatedDays}
-                      startDate={startDate}
-                      clientId={clientId}
-                      depositAmount={totals.depositAmount}
-                      midProjectAmount={totals.midProjectAmount}
-                      totalHT={totals.totalHT}
-                      tax={totals.tax}
-                      totalTTC={totals.totalTTC}
-                      isGeneratingDevis={isGeneratingDevis}
-                      onDepositPercentChange={setDepositPercent}
-                      onMidProjectPercentChange={setMidProjectPercent}
-                      onPaymentModeChange={setPaymentMode}
-                      onValidityDaysChange={setValidityDays}
-                      onEstimatedDaysChange={setCustomEstimatedDays}
-                      onStartDateChange={setStartDate}
-                      onClientIdChange={setClientId}
-                      onValidate={validateAllEstimates}
-                    />
+<QuoteOptionsCard
+  depositPercent={depositPercent}
+  midProjectPercent={midProjectPercent}
+  paymentMode={paymentMode}
+  validityDays={validityDays}
+  estimatedDays={selectedEstimatedDays}
+  startDate={startDate}
+  clientId={clientId}
+  clientOptions={clientOptions}
+  clientsLoading={clientsLoading}
+  depositAmount={totals.depositAmount}
+  midProjectAmount={totals.midProjectAmount}
+  totalHT={totals.totalHT}
+  tax={totals.tax}
+  totalTTC={totals.totalTTC}
+  isGeneratingDevis={isGeneratingDevis}
+  onDepositPercentChange={setDepositPercent}
+  onMidProjectPercentChange={setMidProjectPercent}
+  onPaymentModeChange={setPaymentMode}
+  onValidityDaysChange={setValidityDays}
+  onEstimatedDaysChange={setCustomEstimatedDays}
+  onStartDateChange={setStartDate}
+  onClientIdChange={setClientId}
+  onValidate={validateAllEstimates}
+/>
 
                     {generatedPdfUrl ? (
                       <div className="rounded-[14px] bg-white p-4 shadow-sm">
@@ -1054,6 +1140,8 @@ function QuoteOptionsCard({
   estimatedDays,
   startDate,
   clientId,
+  clientOptions,
+  clientsLoading,
   depositAmount,
   midProjectAmount,
   totalHT,
@@ -1075,8 +1163,10 @@ function QuoteOptionsCard({
   validityDays: number;
   estimatedDays: number;
   startDate: string;
-  clientId: string;
-  depositAmount: number;
+clientId: string;
+clientOptions: ClientOption[];
+clientsLoading: boolean;
+depositAmount: number;
   midProjectAmount: number;
   totalHT: number;
   tax: number;
@@ -1113,31 +1203,62 @@ function QuoteOptionsCard({
         />
       </div>
 
-      <label className="mt-3 block">
-        <span className="mb-1 block text-[10px] font-bold text-[#6b5752]">
-          {t('startDate')}
-        </span>
-        <input
-          type="text"
-          value={startDate}
-          onChange={(event) => onStartDateChange(event.target.value)}
-          placeholder={t('startDatePlaceholder')}
-          className="h-[38px] w-full rounded-[8px] border border-[#eee7e2] bg-white px-2 text-[12px] outline-none"
-        />
-      </label>
+<label className="mt-3 block">
+  <span className="mb-1 block text-[10px] font-bold text-[#6b5752]">
+    {t('startDate')}
+  </span>
 
-      <label className="mt-3 block">
-        <span className="mb-1 block text-[10px] font-bold text-[#6b5752]">
-          {t('clientId')}
-        </span>
-        <input
-          type="number"
-          value={clientId}
-          onChange={(event) => onClientIdChange(event.target.value)}
-          placeholder={t('clientIdPlaceholder')}
-          className="h-[38px] w-full rounded-[8px] border border-[#eee7e2] bg-white px-2 text-[12px] outline-none"
-        />
-      </label>
+  <input
+    type="date"
+    value={startDate}
+    min={new Date().toISOString().slice(0, 10)}
+    onChange={(event) => onStartDateChange(event.target.value)}
+    onKeyDown={(event) => event.preventDefault()}
+    onPaste={(event) => event.preventDefault()}
+    onDrop={(event) => event.preventDefault()}
+    onClick={(event) => {
+      const input = event.currentTarget as HTMLInputElement & {
+        showPicker?: () => void;
+      };
+
+      input.showPicker?.();
+    }}
+    className="h-[38px] w-full rounded-[8px] border border-[#eee7e2] bg-white px-2 text-[12px] font-bold text-[#2b1d1b] outline-none"
+  />
+</label>
+
+<label className="mt-3 block">
+  <span className="mb-1 block text-[10px] font-bold text-[#6b5752]">
+    {t('clientId')}
+  </span>
+
+  <select
+    value={clientId}
+    onChange={(event) => onClientIdChange(event.target.value)}
+    disabled={clientsLoading}
+    className="h-[38px] w-full rounded-[8px] border border-[#eee7e2] bg-white px-2 text-[12px] font-bold text-[#2b1d1b] outline-none disabled:opacity-60"
+  >
+    <option value="">
+      {clientsLoading ? t('clientsLoading') : t('clientIdPlaceholder')}
+    </option>
+
+    {clientOptions.map((client) => {
+      const id = client.id;
+      const fullName = [client.nom_client, client.prenom_client]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      const label = fullName || client.mail_client || t('clientWithoutName');
+
+      return (
+        <option key={id} value={id}>
+          {id} - {label}
+        </option>
+      );
+    })}
+  </select>
+</label>
 
       <NumberField
         label={t('depositPercent')}
@@ -1346,6 +1467,18 @@ function formatCurrency(value: number) {
     style: 'currency',
     currency: 'EUR',
   }).format(Number(value) || 0);
+}
+
+function formatDateForDevisPayload(value: string) {
+  if (!value) return '';
+
+  const [year, month, day] = value.split('-');
+
+  if (!year || !month || !day) {
+    return value;
+  }
+
+  return `${day}/${month}/${year}`;
 }
 
 function formatHours(value: number) {
