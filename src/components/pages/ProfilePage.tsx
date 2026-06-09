@@ -956,13 +956,20 @@ function getInitial(profile: UserProfile | null) {
   return getDisplayName(profile).slice(0, 1).toUpperCase();
 }
 
+function getCompanyField(
+  company: CompanyResult | LinkedCompany,
+  field: string,
+) {
+  return (company as Record<string, unknown>)[field];
+}
+
 function getCompanyName(company: CompanyResult | LinkedCompany) {
   return (
-    stringifyProfileValue(company.denomination) ||
-    stringifyProfileValue(company.nom_complet) ||
-    stringifyProfileValue(company.company_name) ||
-    stringifyProfileValue(company['Dénomination']) ||
-    stringifyProfileValue(company['Nom complet']) ||
+    stringifyProfileValue(getCompanyField(company, 'denomination')) ||
+    stringifyProfileValue(getCompanyField(company, 'nom_complet')) ||
+    stringifyProfileValue(getCompanyField(company, 'company_name')) ||
+    stringifyProfileValue(getCompanyField(company, 'Dénomination')) ||
+    stringifyProfileValue(getCompanyField(company, 'Nom complet')) ||
     'Entreprise'
   );
 }
