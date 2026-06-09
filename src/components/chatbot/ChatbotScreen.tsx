@@ -703,31 +703,38 @@ async function validateAllEstimates() {
       const tax = getTaxAmount(current);
       const totalTTC = roundMoney(totalHT + tax);
 
-      acc[`Job_${index + 1}`] = {
-        Description_finale: current.description,
-        Quantite_finale: current.quantity,
-        Price_finale: totalTTC,
-        Price_finale_sans_tax: totalHT,
-        materiel_price_finale: getMaterialTotal(current),
-        main_oeuvre_price_finale: getLaborTotal(current),
-        tax_finale: tax,
-        Unité: job.unit,
-        total_hours_finale: getEstimatedHoursTotal(current),
-      };
+acc[`Job_${index + 1}`] = {
+  Description_finale: current.description,
+  Quantite_finale: current.quantity,
+  Price_finale: totalTTC,
+  Price_finale_sans_tax: totalHT,
+  materiel_price_finale: getMaterialTotal(current),
+  main_oeuvre_price_finale: getLaborTotal(current),
+  tax_finale: tax,
+  TVA_rate: current.taxRate,
+  Unité: job.unit,
+  total_hours_finale: getEstimatedHoursTotal(current),
+};         
 
       return acc;
     }, {});
 
-    return {
-      ...payloadJobs,
-      Acompte: computedTotals.depositAmount,
-      Millieu_chantier: computedTotals.midProjectAmount,
-      Mode_paiement: paymentMode,
-      Validite: validityDays,
-      Durée_estimee: finalEstimatedDays || undefined,
-      date_debut: formatDateForDevisPayload(startDate),
-      client_id: clientId ? Number(clientId) : undefined,
-    };
+const safeDepositPercent = Math.max(0, Math.min(Number(depositPercent) || 0, 100));
+const safeMidProjectPercent = Math.max(
+  0,
+  Math.min(Number(midProjectPercent) || 0, 100 - safeDepositPercent),
+);
+
+return {
+  ...payloadJobs,
+  Acompte_pct: safeDepositPercent,
+  Millieu_chantier_pct: safeMidProjectPercent,
+  Mode_paiement: paymentMode,
+  Validite: validityDays,
+  Durée_estimee: finalEstimatedDays || undefined,
+  date_debut: formatDateForDevisPayload(startDate),
+  client_id: clientId ? Number(clientId) : undefined,
+};
   }
 
   const canSend = Boolean(input.trim() || recordedAudioBlob) && !isThinking && !isRecording;

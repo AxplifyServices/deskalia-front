@@ -7,6 +7,7 @@ import ClientsPage from '@/components/pages/ClientsPage';
 import DevisPage from '@/components/pages/DevisPage';
 import ComingSoonPage from '@/components/pages/ComingSoonPage';
 import { authHeaders, type UserProfile } from '@/lib/auth-client';
+import ProfilePage from '@/components/pages/ProfilePage';
 
 export type DeskaliaView =
   | 'chat'
@@ -202,8 +203,8 @@ export default function DeskaliaShell({ profile, onLogout }: DeskaliaShellProps)
           ) : null}
 
           {activeView === 'planning' ? <ComingSoonPage title={t('planning')} /> : null}
-          {activeView === 'settings' ? <ComingSoonPage title={t('settings')} /> : null}
-          {activeView === 'profile' ? <ComingSoonPage title={t('profile')} /> : null}
+          {activeView === 'settings' ? <ProfilePage /> : null}
+          {activeView === 'profile' ? <ProfilePage /> : null}
         </section>
       </div>
     </main>
@@ -358,14 +359,14 @@ function SidebarContent({
             </p>
           </button>
 
-          <button
-            type="button"
-            onClick={() => onOpenView('settings')}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#704f49] active:scale-95"
-            aria-label={t('settings')}
-          >
-            <SettingsIcon />
-          </button>
+<button
+  type="button"
+  onClick={() => onOpenView('profile')}
+  className="flex h-10 w-10 items-center justify-center rounded-full text-[#704f49] active:scale-95"
+  aria-label={t('profile')}
+>
+  <SettingsIcon />
+</button>
         </div>
 
         {onLogout ? (
